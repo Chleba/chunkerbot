@@ -19,11 +19,13 @@ use langchain_rust::{
     message_formatter, output_parsers,
     prompt::HumanMessagePromptTemplate,
     prompt_args,
-    schemas::{Document, Message},
+    schemas::{Document, Message, Retriever},
     template_jinja2,
     vectorstore::{
         qdrant::{Qdrant, StoreBuilder},
-        Retriever, VecStoreOptions, VectorStore,
+        // Retriever, VecStoreOptions, VectorStore,
+        VecStoreOptions,
+        VectorStore,
     },
 };
 
@@ -85,23 +87,32 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
 
     let msg_template = template_jinja2!(
         "
-Jsi inteligentní AI asistent specializující se na odpovídání na otázky na základě poskytnutého kontextu. Níže je otázka uživatele a relevantní informace načtené z databáze.
+    Jsi pokročilý AI asistent, který odpovídá na otázky na základě poskytnutého kontextu.  
+    Tvoje úloha je analyzovat poskytnuté informace a vybrat **pouze ty nejrelevantnější** pro odpověď.  
 
-**Otázka uživatele:**  
-{{question}}
+    📌 **Otázka uživatele:**  
+    {{question}}
 
-**Relevantní informace z databáze:**  
-{{context}}
+    📌 **Poskytnuté informace (může obsahovat irelevantní části):**  
+    {{context}}
 
-**Pokyny pro odpověď:**  
-- Odpověz **pouze** na základě poskytnutého kontextu.  
-- Pokud odpověď v kontextu chybí, přiznej to a nehalucinuj.  
-- Stručně a jasně shrň informace relevantní k dotazu.  
+    📌 **Instrukce pro odpověď:**  
+    1. **Nezohledňuj irelevantní informace.** Pečlivě vyhodnoť, které části poskytnutého textu se opravdu týkají otázky.  
+    2. **Pokud relevantní odpověď existuje, uveď ji stručně a jasně.**  
+    3. **Pokud v poskytnutých informacích odpověď chybí nebo není dostatečně jasná, řekni to.** Nesnaž se odpověď vymýšlet.  
+    4. **Nevyužívej žádné jiné znalosti mimo poskytnutý kontext a historii konverzace.**  
 
-**Tvoje odpověď:**",
-        "context",
-        "question"
+    **Tvoje odpověď:**",
+    "context",
+    "question"
     );
+
+    // let msg_template = template_jinja2!(
+    //     "Odpoved na otazku pouze z tohoto textu: {{context}}.
+    // Otazka: {{question}}",
+    //     "context",
+    //     "question"
+    // );
 
     let ollama_embed = OllamaEmbedder::new(
         ollama_client.clone(),
@@ -119,14 +130,16 @@ Jsi inteligentní AI asistent specializující se na odpovídání na otázky na
         .unwrap();
 
     let prompt = message_formatter![
-        // fmt_message!(Message::new_system_message("Jsi AI pomocnik ve firme S&W pro strucne odpovedi na dotazy z dodanych documents internich smernic. Odpovidej co nepresneji dle dodaneho kontextu.")),
+        fmt_message!(Message::new_system_message("Jsi AI pomocnik ve firme S&W pro strucne odpovedi na dotazy z dodanych documents internich smernic. Odpovidej co nepresneji dle dodaneho kontextu.")),
         fmt_template!(HumanMessagePromptTemplate::new(msg_template))
     ];
+    let retviever = langchain_rust::vectorstore::Retriever::new(vector_store, 5)
+        .with_options(VecStoreOptions::new().with_score_threshold(0.5));
     let chain = ConversationalRetrieverChainBuilder::new()
         .llm(ollama)
         .rephrase_question(true)
         .memory(SimpleMemory::new().into())
-        .retriever(Retriever::new(vector_store, 10))
+        .retriever(retviever)
         .return_source_documents(true)
         .prompt(prompt)
         .build()
@@ -155,11 +168,22 @@ Jsi inteligentní AI asistent specializující se na odpovídání na otázky na
                 Ok(data) => {
                     let output = data["output"].as_str().unwrap();
                     let out_formatted = unescape(output).unwrap();
+
+                    let mut used_docs: Vec<String> = data["source_documents"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|d| {
+                            let d_str = format!("{} (s:{})", d["metadata"]["path"], d["score"]);
+                            return d_str;
+                            // let mut d_str = d["metadata"]["path"].as_str().unwrap().to_string();
+                        })
+                        .collect();
+                    used_docs.sort();
+                    used_docs.dedup();
+
                     println!("{}", out_formatted);
-                    println!(
-                        "-------\ndocuments:[{}]",
-                        data["source_documents"][0]["metadata"]["path"]
-                    );
+                    println!("-------\ndocuments: {:?}", used_docs,);
                 }
                 Err(e) => {
                     println!("Error: {:?}", e);
