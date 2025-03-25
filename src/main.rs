@@ -84,8 +84,21 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
     );
 
     let msg_template = template_jinja2!(
-        "Odpovez na otazku pouze z tohoto textu: {{context}}
-    Otazka: {{question}}",
+        "
+Jsi inteligentní AI asistent specializující se na odpovídání na otázky na základě poskytnutého kontextu. Níže je otázka uživatele a relevantní informace načtené z databáze.
+
+**Otázka uživatele:**  
+{{question}}
+
+**Relevantní informace z databáze:**  
+{{context}}
+
+**Pokyny pro odpověď:**  
+- Odpověz **pouze** na základě poskytnutého kontextu.  
+- Pokud odpověď v kontextu chybí, přiznej to a nehalucinuj.  
+- Stručně a jasně shrň informace relevantní k dotazu.  
+
+**Tvoje odpověď:**",
         "context",
         "question"
     );
@@ -106,7 +119,7 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
         .unwrap();
 
     let prompt = message_formatter![
-        fmt_message!(Message::new_system_message("Jsi AI pomocnik ve firme S&W pro strucne odpovedi na dotazy z dodanych documents internich smernic. Odpovidej co nepresneji dle dodaneho kontextu.")),
+        // fmt_message!(Message::new_system_message("Jsi AI pomocnik ve firme S&W pro strucne odpovedi na dotazy z dodanych documents internich smernic. Odpovidej co nepresneji dle dodaneho kontextu.")),
         fmt_template!(HumanMessagePromptTemplate::new(msg_template))
     ];
     let chain = ConversationalRetrieverChainBuilder::new()
@@ -144,7 +157,7 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
                     let out_formatted = unescape(output).unwrap();
                     println!("{}", out_formatted);
                     println!(
-                        "-------\ndocument:[{}]",
+                        "-------\ndocuments:[{}]",
                         data["source_documents"][0]["metadata"]["path"]
                     );
                 }
