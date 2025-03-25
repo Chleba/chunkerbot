@@ -438,6 +438,7 @@ dependencies = [
  "text-splitter 0.24.2",
  "tiktoken-rs 0.6.0",
  "tokio",
+ "unescape",
  "urlencoding",
 ]
 
@@ -3546,6 +3547,12 @@ name = "typenum"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
+
+[[package]]
+name = "unescape"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccb97dac3243214f8d8507998906ca3e2e0b900bf9bf4870477f125b82e68f6e"
 
 [[package]]
 name = "unicase"

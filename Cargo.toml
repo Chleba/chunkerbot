@@ -21,3 +21,4 @@ env_logger = "0.11.7"
 text-splitter = { version = "0.24.1", features = ["tiktoken-rs"] }
 tiktoken-rs = "0.6.0"
 clap = { version = "4.5.32", features = ["derive"] }
+unescape = "0.1.0"

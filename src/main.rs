@@ -1,7 +1,11 @@
 use clap::{Parser, ValueEnum};
 use futures_util::StreamExt;
 use reqwest::Url;
-use std::{fs, io::Write, sync::Arc, time::Duration};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use unescape::unescape;
+
+use std::{collections::HashMap, fs, io::Write, sync::Arc, time::Duration};
 use text_splitter::{ChunkConfig, TextSplitter};
 use tiktoken_rs::cl100k_base;
 
@@ -12,7 +16,7 @@ use langchain_rust::{
     fmt_message, fmt_template,
     llm::client::{GenerationOptions, Ollama, OllamaClient},
     memory::SimpleMemory,
-    message_formatter,
+    message_formatter, output_parsers,
     prompt::HumanMessagePromptTemplate,
     prompt_args,
     schemas::{Document, Message},
@@ -109,7 +113,8 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
         .llm(ollama)
         .rephrase_question(true)
         .memory(SimpleMemory::new().into())
-        .retriever(Retriever::new(vector_store, 5))
+        .retriever(Retriever::new(vector_store, 10))
+        .return_source_documents(true)
         .prompt(prompt)
         .build()
         .expect("Error building ConversationalChain");
@@ -132,15 +137,32 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
             "question" => &query,
         };
 
-        let mut stream = chain.stream(input_variables).await.unwrap();
-        while let Some(result) = stream.next().await {
+        if let result = chain.execute(input_variables).await {
             match result {
-                Ok(data) => data.to_stdout().unwrap(),
+                Ok(data) => {
+                    let output = data["output"].as_str().unwrap();
+                    let out_formatted = unescape(output).unwrap();
+                    println!("{}", out_formatted);
+                    println!(
+                        "-------\ndocument:[{}]",
+                        data["source_documents"][0]["metadata"]["path"]
+                    );
+                }
                 Err(e) => {
                     println!("Error: {:?}", e);
                 }
             }
-        }
+        };
+
+        // let mut stream = chain.stream(input_variables).await.unwrap();
+        // while let Some(result) = stream.next().await {
+        //     match result {
+        //         Ok(data) => data.to_stdout().unwrap(),
+        //         Err(e) => {
+        //             println!("Error: {:?}", e);
+        //         }
+        //     }
+        // }
     }
 }
 
@@ -197,7 +219,7 @@ async fn generate(
     for doc_path in documents {
         // -------------------------------------
         // -- documents loader text extractor
-        let loader = PdfExtractLoader::from_path(doc_path).unwrap();
+        let loader = PdfExtractLoader::from_path(doc_path.clone()).unwrap();
         let doc = loader
             .load()
             .await
@@ -213,7 +235,7 @@ async fn generate(
         let mut doc_text: String = "".to_string();
 
         let tokenizer = cl100k_base().unwrap();
-        let max_tokens = 800;
+        let max_tokens = 512;
         let chunk_config = ChunkConfig::new(max_tokens).with_sizer(tokenizer);
         let splitter = TextSplitter::new(chunk_config);
         for doc_entry in doc.iter() {
@@ -244,14 +266,17 @@ async fn generate(
                 Ok(result) => {
                     println!("RESULT:");
                     println!("{:?}", result);
-                    context_chunks.push(Document::new(result));
+                    let mut h = HashMap::new();
+                    h.insert("path".to_string(), Value::String(doc_path.clone()));
+                    let d = Document::new(result).with_metadata(h);
+                    context_chunks.push(d);
                 }
                 Err(e) => panic!("Error invoking LLMChain: {:?}", e),
             }
 
             // -------------------------------------
             // -- sleep between chunks so poor GPU don't blow up
-            tokio::time::sleep(Duration::from_secs(20)).await;
+            // tokio::time::sleep(Duration::from_secs(20)).await;
         }
 
         // -------------------------------------
@@ -307,135 +332,4 @@ async fn main() {
             .await;
         }
     }
-
-    //
-    // let arg_matches = Command::new("embedgen")
-    //     .version("0.1")
-    //     .author("Lukas Chleba Franek")
-    //     .about("Chunking documents and generating context chunks that is stored into a vector DB.")
-    //     .arg(Arg::new("chat").help("simple CLI chat with document context"))
-    //     .arg(Arg::new("generate").help(
-    //         "parse given document and generate contextual chunks that is then stored into a DB",
-    //     ))
-    //     .arg(
-    //         Arg::new("document")
-    //             .help("document for generation")
-    //             .requires_if("", "generate"),
-    //     )
-    //     .get_matches();
-    //
-    // let chat_flag = arg_matches.contains_id("chat");
-    //
-    // println!("{:?} = chat", chat_flag);
-
-    // if arg_match
-
-    // let chat = arg_matches.args_present("chat");
-
-    // // -- documents text extractor
-    // let path = "./assets/Interní postup - Autoreply e-mails.pdf";
-    // let path1 = "./assets/Směrnice - Sales (Stepan).pdf";
-    // let path2 = "./assets/Systém vnitřních zásad_12.07.2023.pdf";
-    // let loader = PdfExtractLoader::from_path(path1).unwrap();
-    // let doc = loader
-    //     .load()
-    //     .await
-    //     .unwrap()
-    //     .map(|d| d.unwrap())
-    //     .collect::<Vec<_>>()
-    //     .await;
-    // log::info!("{:?}", doc);
-    //
-    // // -- spliting into a meaningful chunks
-    // let tokenizer = cl100k_base().unwrap();
-    // let max_tokens = 750;
-    // let splitter = TextSplitter::new(ChunkConfig::new(max_tokens).with_sizer(tokenizer));
-    // let chunks = splitter
-    //     .chunks(&doc[0].page_content)
-    //     .map(|d| Document::new(d))
-    //     .collect::<Vec<_>>();
-    //
-    // println!("{:?}", chunks);
-    // println!("chunks len - {}", &chunks.len());
-    //
-    // // -- embeddings & vector store
-    // // let ollama_embed = OllamaEmbedder::default().with_model("nomic-embed-text");
-    // let ollama_embed = OllamaEmbedder::default().with_model("paraphrase-multilingual");
-    // let db_client = Qdrant::from_url("http://localhost:6334").build().unwrap();
-    // let vector_store = StoreBuilder::new()
-    //     .embedder(ollama_embed)
-    //     .recreate_collection(true)
-    //     .client(db_client)
-    //     .collection_name("documents")
-    //     .build()
-    //     .await
-    //     .unwrap();
-    // vector_store
-    //     // .add_documents(&doc, &VecStoreOptions::default())
-    //     .add_documents(&chunks, &VecStoreOptions::default())
-    //     .await
-    //     .unwrap();
-    //
-    // // -- llm
-    // let ollama = Ollama::default().with_model("aya");
-    //
-    // let msg_template = template_jinja2!(
-    //     "Odpovez na otazku pouze z tohoto textu: {{context}}
-    // Otazka: {{question}}",
-    //     "context",
-    //     "question"
-    // );
-    //
-    // // let msg_template = template_jinja2!(
-    // //     "Answer the question based only on the following context:
-    // // {{context}}
-    // // Question: {{question}}",
-    // //     "context",
-    // //     "question"
-    // // );
-    //
-    // // let msg_template = template_jinja2!("
-    // // Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
-    // //
-    // // {{context}}
-    // //
-    // // Question:{{question}}
-    // // Helpful Answer:
-    // //         ",
-    // //                     "context","question")
-    //
-    // let prompt = message_formatter![
-    //     fmt_message!(Message::new_system_message("Jsi AI pomocnik ve firme S&W pro strucne odpovedi na dotazy z dodanych documents internich smernic. Odpovidej co nepresneji dle dodaneho kontextu.")),
-    //     fmt_template!(HumanMessagePromptTemplate::new(msg_template))
-    // ];
-    // let chain = ConversationalRetrieverChainBuilder::new()
-    //     .llm(ollama)
-    //     .rephrase_question(true)
-    //     .memory(SimpleMemory::new().into())
-    //     .retriever(Retriever::new(vector_store, 5))
-    //     //If you want to use the default prompt remove the .prompt()
-    //     //Keep in mind if you want to change the prompt; this chain need the {{context}} variable
-    //     .prompt(prompt)
-    //     .build()
-    //     .expect("Error building ConversationalChain");
-    //
-    // // Ask for user input
-    // print!("Query> ");
-    // std::io::stdout().flush().unwrap();
-    // let mut query = String::new();
-    // std::io::stdin().read_line(&mut query).unwrap();
-    //
-    // let input_variables = prompt_args! {
-    //     "question" => &query,
-    // };
-    //
-    // let mut stream = chain.stream(input_variables).await.unwrap();
-    // while let Some(result) = stream.next().await {
-    //     match result {
-    //         Ok(data) => data.to_stdout().unwrap(),
-    //         Err(e) => {
-    //             println!("Error: {:?}", e);
-    //         }
-    //     }
-    // }
 }
