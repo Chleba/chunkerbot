@@ -97,10 +97,12 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
     {{context}}
 
     📌 **Instrukce pro odpověď:**  
-    1. **Nezohledňuj irelevantní informace.** Pečlivě vyhodnoť, které části poskytnutého textu se opravdu týkají otázky.  
-    2. **Pokud relevantní odpověď existuje, uveď ji stručně a jasně.**  
-    3. **Pokud v poskytnutých informacích odpověď chybí nebo není dostatečně jasná, řekni to.** Nesnaž se odpověď vymýšlet.  
-    4. **Nevyužívej žádné jiné znalosti mimo poskytnutý kontext a historii konverzace.**  
+    1. **Používej historii konverzace k udržení kontextu.** Pokud otázka odkazuje na předchozí část dialogu, zohledni ji.  
+    2. **Pečlivě vyhodnoť, které části poskytnutého textu jsou relevantní.** Nepoužívej irelevantní informace.  
+    3. **Odpověz podrobně a strukturovaně.** Pokud je to vhodné, použij odstavce, seznamy nebo příklady.  
+    4. **Zahrň související informace, které mohou být užitečné pro odpověď.**  
+    5. **Nevyužívej žádné jiné znalosti mimo poskytnutý kontext a historii konverzace.**  
+    6. **Pokud v poskytnutých informacích odpověď chybí, přiznej to, ale nabídni užitečné doplňující informace, pokud to dává smysl.**  
 
     **Tvoje odpověď:**",
     "context",
@@ -174,8 +176,8 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
                         .unwrap()
                         .iter()
                         .map(|d| {
-                            let d_str = format!("{} (s:{})", d["metadata"]["path"], d["score"]);
-                            return d_str;
+                            // format!("{} (s:{})", d["metadata"]["path"], d["score"])
+                            format!("{}", d["metadata"]["path"])
                             // let mut d_str = d["metadata"]["path"].as_str().unwrap().to_string();
                         })
                         .collect();
@@ -183,7 +185,7 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
                     used_docs.dedup();
 
                     println!("{}", out_formatted);
-                    println!("-------\ndocuments: {:?}", used_docs,);
+                    println!("-------\ndocuments:[{}]", used_docs.join(", "));
                 }
                 Err(e) => {
                     println!("Error: {:?}", e);
