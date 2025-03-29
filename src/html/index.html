@@ -1,0 +1,168 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 500px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .chat-box {
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #0084ff;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .bot-message {
+            background-color: #f1f1f1;
+            color: black;
+            align-self: flex-start;
+            position: relative;
+        }
+        .input-container {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px;
+            margin-left: 5px;
+            background: #0084ff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        .actions button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-box" id="chat-box"></div>
+        <div class="input-container">
+            <input type="text" id="user-input" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+    <script>
+        async function sendMessage() {
+            const userInput = document.getElementById("user-input");
+            const chatBox = document.getElementById("chat-box");
+            if (!userInput.value.trim()) return;
+
+            const userMessage = document.createElement("div");
+            userMessage.classList.add("message", "user-message");
+            userMessage.textContent = userInput.value;
+            chatBox.appendChild(userMessage);
+            userInput.value = "";
+
+            const botMessage = document.createElement("div");
+            botMessage.classList.add("message", "bot-message");
+            chatBox.appendChild(botMessage);
+
+            const actions = document.createElement("div");
+            actions.classList.add("actions");
+
+            const thumbsUp = document.createElement("button");
+            thumbsUp.innerHTML = "👍";
+            thumbsUp.onclick = () => alert("You liked the response");
+            
+            const thumbsDown = document.createElement("button");
+            thumbsDown.innerHTML = "👎";
+            thumbsDown.onclick = () => alert("You disliked the response");
+
+            const copyBtn = document.createElement("button");
+            copyBtn.innerHTML = "📋";
+            copyBtn.onclick = () => navigator.clipboard.writeText(botMessage.textContent);
+
+            actions.append(thumbsUp, thumbsDown, copyBtn);
+            botMessage.appendChild(actions);
+            
+            chatBox.scrollTop = chatBox.scrollHeight;
+            
+            const response = await fetch("/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userMessage.textContent })
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let botReply = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                console.log(value);
+                let d_text = decoder.decode(value, { stream: true });
+                let text = d_text.split('data: ')[1];
+                // text = JSON.stringify('{'+text.trim()+'}');
+                // text = text.replace(/([{,])\s*([a-zA-Z0-9_]+)\s*:/g, '$1"$2":'); 
+                console.log(text);
+                text = JSON.parse(text);
+
+                console.log(text);
+                // console.log(text.data);
+                botReply += text.message.content;
+
+                // try {
+                //     let parsed = JSON.parse(text.replace(/data: /g, "").trim());
+                //     botReply += parsed + " ";
+                // } catch {
+                //     botReply += text.replace(/data: /g, "").trim() + " ";
+                // }
+                // text = text.replace(/data: /g, "").trim();
+                // botReply += decoder.decode(value, { stream: true });
+                // botReply += text;
+                botMessage.textContent = botReply;
+                botMessage.appendChild(actions);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+    </script>
+</body>
+</html>
