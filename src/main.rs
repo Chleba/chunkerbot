@@ -194,34 +194,33 @@ async fn chat(ollama_url: String, model: String, embed: String, db_url: String) 
             "question" => &query,
         };
 
-        if let result = chain.execute(input_variables).await {
-            match result {
-                Ok(data) => {
-                    let output = data["output"].as_str().unwrap();
-                    let out_formatted = unescape(output).unwrap();
+        let result = chain.execute(input_variables).await;
+        match result {
+            Ok(data) => {
+                let output = data["output"].as_str().unwrap();
+                let out_formatted = unescape(output).unwrap();
 
-                    let mut used_docs: Vec<String> = data["source_documents"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|d| {
-                            // -- path with score
-                            // format!("{} (s:{})", d["metadata"]["path"], d["score"])
-                            // -- only path
-                            format!("{}", d["metadata"]["path"])
-                        })
-                        .collect();
-                    used_docs.sort();
-                    used_docs.dedup();
+                let mut used_docs: Vec<String> = data["source_documents"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|d| {
+                        // -- path with score
+                        // format!("{} (s:{})", d["metadata"]["path"], d["score"])
+                        // -- only path
+                        format!("{}", d["metadata"]["path"])
+                    })
+                    .collect();
+                used_docs.sort();
+                used_docs.dedup();
 
-                    println!("{}", out_formatted);
-                    println!("-------\ndocuments:[{}]", used_docs.join(", "));
-                }
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                }
+                println!("{}", out_formatted);
+                println!("-------\ndocuments:[{}]", used_docs.join(", "));
             }
-        };
+            Err(e) => {
+                println!("Error: {:?}", e);
+            }
+        }
 
         // let mut stream = chain.stream(input_variables).await.unwrap();
         // while let Some(result) = stream.next().await {
